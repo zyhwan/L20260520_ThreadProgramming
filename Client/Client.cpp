@@ -69,7 +69,7 @@ unsigned WINAPI SendThread(void* Argument)
 		cin.getline(SendBuffer, sizeof(SendBuffer));
 
 		ChatPacket Data;
-		Data.UserID = "junios";
+		Data.UserID = "Jihwan";
 		Data.Message = SendBuffer;
 		Data.Gold = 1000;
 		std::string JSONString = Data.ToString();
