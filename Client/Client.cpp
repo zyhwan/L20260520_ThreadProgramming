@@ -2,14 +2,12 @@
 
 
 #include "ChatPacket.h"
+#include "NetUtil.h"
 
 #include <winsock2.h>
 #include <Windows.h>
 #include <iostream>
 #include <process.h>
-
-
-
 
 #pragma comment(lib, "ws2_32")
 #pragma comment(lib, "NetCommon")
@@ -29,8 +27,21 @@ unsigned WINAPI RecvThread(void* Argument)
 
 	while (IsRecvThreadRunning)
 	{
-		//1 : 1로 주고 받는다.
-		int RecvBytes = recv(ServerSocket, RecvBuffer, sizeof(RecvBuffer), 0);
+		unsigned short PacketSize = 0;
+
+		//header
+		int RecvBytes = recv(ServerSocket, (char*)&PacketSize, sizeof(PacketSize), MSG_WAITALL);
+		if (RecvBytes <= 0)
+		{
+			cout << "recv fail " << endl;
+			break;
+		}
+
+		PacketSize = ntohs(PacketSize);
+
+		memset(RecvBuffer, 0, sizeof(RecvBuffer));
+		//data JSON
+		RecvBytes = recv(ServerSocket, RecvBuffer, PacketSize, MSG_WAITALL);
 		if (RecvBytes <= 0)
 		{
 			cout << "recv fail " << endl;
@@ -53,28 +64,36 @@ unsigned WINAPI SendThread(void* Argument)
 	//책임은 사용하는 놈이 진다.
 	SOCKET ServerSocket = *(SOCKET*)Argument;
 
-	char* P = new char[1024];
-
 	while (IsSendThreadRunning)
 	{
 		cin.getline(SendBuffer, sizeof(SendBuffer));
 
 		ChatPacket Data;
-		Data.UserID = "Jihwan";
+		Data.UserID = "junios";
 		Data.Message = SendBuffer;
 		Data.Gold = 1000;
 		std::string JSONString = Data.ToString();
 
-		//그냥 1 : 1로 주고 받는다.
-		int SentBytes = send(ServerSocket, JSONString.c_str(), (int)JSONString.length(), 0);
+		unsigned short PacketSize = (unsigned short)JSONString.length();
+		PacketSize = htons(PacketSize);
+
+		//header
+		int SentBytes = SendAll(ServerSocket, (char*)&PacketSize, 2);
 		if (SentBytes <= 0)
 		{
-			cout << "send fail." << endl;
+			cout << "header send fail." << endl;
 			break;
 		}
-	}
 
-	delete[] P;
+		//Data
+		SentBytes = SendAll(ServerSocket, JSONString.c_str(), ntohs(PacketSize));
+		if (SentBytes <= 0)
+		{
+			cout << "data send fail." << endl;
+			break;
+		}
+
+	}
 
 	return 0;
 }

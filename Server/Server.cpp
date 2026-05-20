@@ -1,8 +1,9 @@
 #define _WINSOCK_DEPRECATED_NO_WARNINGS
 
+#include "NetUtil.h"
+
 #include <winsock2.h>
 #include <iostream>
-#include "json.hpp"
 
 
 #pragma comment(lib, "ws2_32")
@@ -11,7 +12,6 @@
 using namespace std;
 
 char Buffer[1024] = { 0, };
-
 
 //blocking, synchrous, multiplexing(polling)
 int main()
@@ -84,19 +84,27 @@ int main()
 				else
 				{
 					//Data Receive
-					memset(Buffer, 0, sizeof(Buffer));
-					int RecvBytes = recv(ReadSockets.fd_array[i], Buffer, sizeof(Buffer), 0);
+
+					//header
+					unsigned short PacketSize = 0;
+					int RecvBytes = recv(ReadSockets.fd_array[i], (char*)&PacketSize, sizeof(PacketSize), MSG_WAITALL);
 					if (RecvBytes <= 0)
 					{
-						SOCKADDR_IN ClosedSockAddr;
-						memset(&ClosedSockAddr, 0, sizeof(ClosedSockAddr));
-						int ClosedSockAddrLength = sizeof(ClosedSockAddr);
+						cout << "header recv fail " << endl;
+						DisconnectSocket(ReadSockets.fd_array[i], &ReadSockets);
+						continue;
+					}
 
-						SOCKET ClosedSocket = ReadSockets.fd_array[i];
-						getpeername(ClosedSocket, (SOCKADDR*)&ClosedSockAddr, &ClosedSockAddrLength);
-						cout << "disconnect client " << inet_ntoa(ClosedSockAddr.sin_addr) << endl;
-						FD_CLR(ReadSockets.fd_array[i], &ReadSockets);
-						closesocket(ClosedSocket);
+					PacketSize = ntohs(PacketSize);
+
+					memset(Buffer, 0, sizeof(Buffer));
+					//data JSON
+					RecvBytes = recv(ReadSockets.fd_array[i], Buffer, PacketSize, MSG_WAITALL);
+					if (RecvBytes <= 0)
+					{
+						cout << "data recv fail " << endl;
+						DisconnectSocket(ReadSockets.fd_array[i], &ReadSockets);
+						continue;
 					}
 					else
 					{
@@ -116,19 +124,23 @@ int main()
 							//클라이언트에서는 처리 안함.
 							if (ReadSockets.fd_array[j] != ListenSocket)
 							{
-								int SentBytes = send(ReadSockets.fd_array[j], Buffer, (int)strlen(Buffer), 0);
+								PacketSize = (unsigned short)strlen(Buffer);
+								PacketSize = htons(PacketSize);
+
+								//header
+								int SentBytes = SendAll(ReadSockets.fd_array[j], (char*)&PacketSize, 2);
 								if (SentBytes <= 0)
 								{
-									SOCKADDR_IN ClosedSockAddr;
-									memset(&ClosedSockAddr, 0, sizeof(ClosedSockAddr));
-									int ClosedSockAddrLength = sizeof(ClosedSockAddr);
+									cout << "header send fail." << endl;
+									DisconnectSocket(ReadSockets.fd_array[j], &ReadSockets);
+								}
 
-									SOCKET ClosedSocket = ReadSockets.fd_array[j];
-									getpeername(ClosedSocket, (SOCKADDR*)&ClosedSockAddr, &ClosedSockAddrLength);
-									cout << "send fail." << endl;
-									cout << "disconnect client " << inet_ntoa(ClosedSockAddr.sin_addr) << endl;
-									FD_CLR(ReadSockets.fd_array[j], &ReadSockets);
-									closesocket(ClosedSocket);
+								//Data
+								SentBytes = SendAll(ReadSockets.fd_array[j], Buffer, ntohs(PacketSize));
+								if (SentBytes <= 0)
+								{
+									cout << "Data send fail." << endl;
+									DisconnectSocket(ReadSockets.fd_array[j], &ReadSockets);
 								}
 							}
 						}

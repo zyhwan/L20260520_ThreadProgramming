@@ -137,12 +137,14 @@
   <ItemGroup>
     <ClInclude Include="ChatPacket.h" />
     <ClInclude Include="framework.h" />
+    <ClInclude Include="NetUtil.h" />
     <ClInclude Include="Packet.h" />
     <ClInclude Include="pch.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="ChatPacket.cpp" />
     <ClCompile Include="NetCommon.cpp" />
+    <ClCompile Include="NetUtil.cpp" />
     <ClCompile Include="Packet.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
