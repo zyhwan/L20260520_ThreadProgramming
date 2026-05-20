@@ -1,17 +1,22 @@
 #define _WINSOCK_DEPRECATED_NO_WARNINGS
-#include <WinSock2.h>
+
+#include <winsock2.h>
 #include <iostream>
+#include "json.hpp"
+
 
 #pragma comment(lib, "ws2_32")
+#pragma comment(lib, "NetCommon")
 
 using namespace std;
+
 char Buffer[1024] = { 0, };
 
 
-//blocking, synchronous, multiplexing(polling)
+//blocking, synchrous, multiplexing(polling)
 int main()
 {
-	cout << "-------- server --------" << endl;
+	cout << "server start" << endl;
 
 	WSAData wsaData;
 
@@ -19,107 +24,111 @@ int main()
 
 	SOCKET ListenSocket = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
 
-	SOCKADDR_IN	ListenSockAddr;
-	memset(&ListenSockAddr, 0 , sizeof(ListenSocket));
+	SOCKADDR_IN ListenSockAddr;
+	memset(&ListenSockAddr, 0, sizeof(ListenSockAddr));
 	ListenSockAddr.sin_family = AF_INET;
 	ListenSockAddr.sin_addr.s_addr = INADDR_ANY;
 	ListenSockAddr.sin_port = htons(35000);
 
-	bind(ListenSocket, (SOCKADDR*)&ListenSockAddr, sizeof(ListenSockAddr));
+	//already use port 이미 포트 사용중
+	::bind(ListenSocket, (SOCKADDR*)&ListenSockAddr, sizeof(ListenSockAddr));
 
 	listen(ListenSocket, SOMAXCONN);
 
-	//blocking 함수, 동기화 작업을 위해서는 (CallBack이 필요하다 그래서 (thread를 사용한다.))
-	//blocking 함수, synchronous(TimeOut 기법) -> 성능은 떨어지지만 호환성이 좋다. 대부분에 운영체제에서 사용 가능.
-	TIMEVAL TimeOut; //이 시간동안 기다리게 하기.
+
+
+	//blocking, synchronous(TimeOut)
+	TIMEVAL TimeOut;
 	TimeOut.tv_sec = 0;
 	TimeOut.tv_usec = 500000;
-	
-	//fd_set -> 소켓의 집합이라고 생각하자.
+
 	fd_set ReadSockets;
 	fd_set CopyReadSockets;
+
 	FD_ZERO(&ReadSockets);
 	FD_SET(ListenSocket, &ReadSockets);
 
 	while (true)
-	{	
-		//원본을 복사본에 저장해둠.
+	{
 		CopyReadSockets = ReadSockets;
 
-		//복사본에서 변화가 있는지 체크
+		//0.5초씩 blocking
 		int ChangeCount = select(0, &CopyReadSockets, 0, 0, &TimeOut);
 
 		if (ChangeCount <= 0)
 		{
-			//0.5초에 한번씩 서버 작업을 함.
+			//Server Work
+			//0.5초한번 서버 작업을 하는거
 			continue;
 		}
 
-		//여기로 오는 것은 뭔가 자료가 있다는 의미
+		//몬가 자료 있다.
 		for (int i = 0; i < (int)ReadSockets.fd_count; ++i)
 		{
 			if (FD_ISSET(ReadSockets.fd_array[i], &CopyReadSockets))
 			{
 				if (ReadSockets.fd_array[i] == ListenSocket)
 				{
-					SOCKADDR_IN	ClientSockAddr;
+					//connect process
+					SOCKADDR_IN ClientSockAddr;
 					memset(&ClientSockAddr, 0, sizeof(ClientSockAddr));
-					int ClientSockLength = sizeof(ClientSockAddr);
+					int ClientSockSockLength = sizeof(ClientSockAddr);
 
-					//blocking 함수, 
-					SOCKET ClientSocket = accept(ListenSocket, (SOCKADDR*)&ClientSockAddr, &ClientSockLength);
+					//blocking, synchronous
+					SOCKET ClientSocket = accept(ListenSocket, (SOCKADDR*)&ClientSockAddr, &ClientSockSockLength);
 
-					//inet_ntoa() -> 네트워크를 문자열로 변환해서 반환
-					std::cout << "connect client" << inet_ntoa(ClientSockAddr.sin_addr) <<std::endl;
+					cout << "connect client " << inet_ntoa(ClientSockAddr.sin_addr) << endl;
 
 					FD_SET(ClientSocket, &ReadSockets);
 				}
 				else
 				{
-					//DataReceive
+					//Data Receive
+					memset(Buffer, 0, sizeof(Buffer));
 					int RecvBytes = recv(ReadSockets.fd_array[i], Buffer, sizeof(Buffer), 0);
-
 					if (RecvBytes <= 0)
 					{
-						SOCKADDR_IN	ClosedSockAddr;
+						SOCKADDR_IN ClosedSockAddr;
 						memset(&ClosedSockAddr, 0, sizeof(ClosedSockAddr));
-						int ClosedSockLength = sizeof(ClosedSockAddr);
+						int ClosedSockAddrLength = sizeof(ClosedSockAddr);
 
-						SOCKET CloseSocket = ReadSockets.fd_array[i];
-						getpeername(CloseSocket, (SOCKADDR*)&ClosedSockAddr, &ClosedSockLength);
-						std::cout << "disconnect client" << inet_ntoa(ClosedSockAddr.sin_addr) << std::endl;
-
+						SOCKET ClosedSocket = ReadSockets.fd_array[i];
+						getpeername(ClosedSocket, (SOCKADDR*)&ClosedSockAddr, &ClosedSockAddrLength);
+						cout << "disconnect client " << inet_ntoa(ClosedSockAddr.sin_addr) << endl;
 						FD_CLR(ReadSockets.fd_array[i], &ReadSockets);
-						closesocket(CloseSocket);
+						closesocket(ClosedSocket);
 					}
 					else
 					{
-						SOCKADDR_IN	ClientSockAddr;
+						SOCKADDR_IN ClientSockAddr;
 						memset(&ClientSockAddr, 0, sizeof(ClientSockAddr));
-						int ClientSockLength = sizeof(ClientSockAddr);
+						int ClientSockAddrLength = sizeof(ClientSockAddr);
 
-						getpeername(ReadSockets.fd_array[i], (SOCKADDR*)&ClientSockAddr, &ClientSockLength);
-						std::cout << "Client(" << inet_ntoa(ClientSockAddr.sin_addr); 
-						std::cout << ")" << Buffer << " Send" << std::endl;
+						getpeername(ReadSockets.fd_array[i], (SOCKADDR*)&ClientSockAddr, &ClientSockAddrLength);
 
-						for (int i = 0; i < (int)ReadSockets.fd_count; ++i)
+						cout << "client(" << inet_ntoa(ClientSockAddr.sin_addr);
+						cout << ")" << Buffer << " send" << endl;
+						//모든 접속한 유저한테 전달
+
+						for (int j = 0; j < (int)ReadSockets.fd_count; ++j)
 						{
-							if (ReadSockets.fd_array[i] == ListenSocket)
+							//자기꺼는 그냥 찍고 안 받으면 안되요?
+							//클라이언트에서는 처리 안함.
+							if (ReadSockets.fd_array[j] != ListenSocket)
 							{
-								int SendBytes = send(ReadSockets.fd_array[i], Buffer, sizeof(Buffer), 0);
-								if (SendBytes <= 0)
+								int SentBytes = send(ReadSockets.fd_array[j], Buffer, (int)strlen(Buffer), 0);
+								if (SentBytes <= 0)
 								{
-									SOCKADDR_IN	ClosedSockAddr;
+									SOCKADDR_IN ClosedSockAddr;
 									memset(&ClosedSockAddr, 0, sizeof(ClosedSockAddr));
-									int ClosedSockLength = sizeof(ClosedSockAddr);
+									int ClosedSockAddrLength = sizeof(ClosedSockAddr);
 
-									SOCKET CloseSocket = ReadSockets.fd_array[i];
-									getpeername(CloseSocket, (SOCKADDR*)&ClosedSockAddr, &ClosedSockLength);
-									std::cout << "send fail." << std::endl;
-									std::cout << "disconnect client" << inet_ntoa(ClosedSockAddr.sin_addr) << std::endl;
-
-									FD_CLR(ReadSockets.fd_array[i], &ReadSockets);
-									closesocket(CloseSocket);
+									SOCKET ClosedSocket = ReadSockets.fd_array[j];
+									getpeername(ClosedSocket, (SOCKADDR*)&ClosedSockAddr, &ClosedSockAddrLength);
+									cout << "send fail." << endl;
+									cout << "disconnect client " << inet_ntoa(ClosedSockAddr.sin_addr) << endl;
+									FD_CLR(ReadSockets.fd_array[j], &ReadSockets);
+									closesocket(ClosedSocket);
 								}
 							}
 						}
@@ -128,6 +137,10 @@ int main()
 			}
 		}
 	}
+
+
+
+
 
 
 	closesocket(ListenSocket);
