@@ -2,6 +2,7 @@
 
 
 #include "ChatPacket.h"
+#include "MovePacket.h"
 #include "NetUtil.h"
 
 #include <winsock2.h>
@@ -27,34 +28,59 @@ unsigned WINAPI RecvThread(void* Argument)
 
 	while (IsRecvThreadRunning)
 	{
-		unsigned short PacketSize = 0;
+		PacketHeader Header;
 
 		//header
-		int RecvBytes = recv(ServerSocket, (char*)&PacketSize, sizeof(PacketSize), MSG_WAITALL);
+		int RecvBytes = recv(ServerSocket, (char*)&Header, sizeof(Header), MSG_WAITALL);
 		if (RecvBytes <= 0)
 		{
 			cout << "recv fail " << endl;
 			break;
 		}
 
-		PacketSize = ntohs(PacketSize);
+		PacketType Type = static_cast<PacketType>(ntohs(Header.Type));
+		unsigned short Size = ntohs(Header.Size);
 
 		memset(RecvBuffer, 0, sizeof(RecvBuffer));
 		//data JSON
-		RecvBytes = recv(ServerSocket, RecvBuffer, PacketSize, MSG_WAITALL);
+		RecvBytes = recv(ServerSocket, RecvBuffer, Size, MSG_WAITALL);
 		if (RecvBytes <= 0)
 		{
 			cout << "recv fail " << endl;
 			break;
 		}
 
+		string JsonStr(RecvBuffer, RecvBytes);
+
 		ChatPacket Data;
+		switch (Type)
+		{
+		case PacketType::Chat:
+		{
+			ChatPacket Chat;
+			Chat.Parse(JsonStr);
+			cout << "[채팅] " << Chat.UserID
+				<< " : " << Chat.Message
+				<< " (Gold: " << Chat.Gold << ")" << endl;
+			break;
+		}
 
-		Data.Parse(RecvBuffer);
+		case PacketType::Position:
+		{
+			// 서버가 이동 결과를 Position 패킷으로 브로드캐스트
+			PositionPacket Pos;
+			Pos.Parse(JsonStr);
+			cout << "[위치] " << Pos.UserID
+				<< " -> (" << Pos.X << ", " << Pos.Y << ")" << endl;
+			break;
+		}
 
-		cout << Data.UserID << " : " << Data.Message << " " << Data.Gold << endl;
+		default:
+			cout << "[클라] 알 수 없는 패킷 타입: "
+				<< static_cast<int>(Type) << endl;
+			break;
+		}
 	}
-
 
 	return 0;
 }
@@ -67,32 +93,38 @@ unsigned WINAPI SendThread(void* Argument)
 	while (IsSendThreadRunning)
 	{
 		cin.getline(SendBuffer, sizeof(SendBuffer));
+		string Input(SendBuffer);
 
-		ChatPacket Data;
-		Data.UserID = "Jihwan";
-		Data.Message = SendBuffer;
-		Data.Gold = 1000;
-		std::string JSONString = Data.ToString();
+		if (Input.empty())
+			continue;
 
-		unsigned short PacketSize = (unsigned short)JSONString.length();
-		PacketSize = htons(PacketSize);
-
-		//header
-		int SentBytes = SendAll(ServerSocket, (char*)&PacketSize, 2);
-		if (SentBytes <= 0)
+		if (Input.length() == 1 &&
+			(Input[0] == 'w' || Input[0] == 'a' ||
+				Input[0] == 's' || Input[0] == 'd')) //이 경우면 이동
 		{
-			cout << "header send fail." << endl;
-			break;
-		}
+			MovePacket Move;
+			Move.UserID = "Jihwan";
+			Move.Dir = Input[0];
 
-		//Data
-		SentBytes = SendAll(ServerSocket, JSONString.c_str(), ntohs(PacketSize));
-		if (SentBytes <= 0)
+			if (SendPacket(ServerSocket, PacketType::Move, Move.ToString()) <= 0)
+			{
+				cout << "[클라] MovePacket 전송 실패" << endl;
+				break;
+			}
+		}
+		else //채팅 전달
 		{
-			cout << "data send fail." << endl;
-			break;
-		}
+			ChatPacket Chat;
+			Chat.UserID = "Jihwan";
+			Chat.Message = Input;
+			Chat.Gold = 1000;
 
+			if (SendPacket(ServerSocket, PacketType::Chat, Chat.ToString()) <= 0)
+			{
+				cout << "[클라] ChatPacket 전송 실패" << endl;
+				break;
+			}
+		}
 	}
 
 	return 0;
@@ -101,7 +133,6 @@ unsigned WINAPI SendThread(void* Argument)
 int main()
 {
 	cout << "client" << endl;
-
 
 	WSAData wsaData;
 
@@ -124,19 +155,12 @@ int main()
 	//nonblocking, asynchrous
 	ThreadHandles[0] = (HANDLE)_beginthreadex(0, 0, RecvThread, &ServerSocket, /*CREATE_SUSPENDED*/0, 0);
 	ThreadHandles[1] = (HANDLE)_beginthreadex(0, 0, SendThread, &ServerSocket, /*CREATE_SUSPENDED*/0, 0);
-	//ResumeThread(ThreadHandles[0]);
-	//ResumeThread(ThreadHandles[1]);
-	//SuspendThread(ThreadHandles[0]);
-	//SuspendThread(ThreadHandles[1]);
-
 
 	//blocking
 	WaitForMultipleObjects(2, ThreadHandles, FALSE, INFINITE);
 
 	closesocket(ServerSocket);
 
-	//TerminateThread(ThreadHandles[0], 0);
-	//TerminateThread(ThreadHandles[1], 0);
 	IsSendThreadRunning = false;
 	IsRecvThreadRunning = false;
 

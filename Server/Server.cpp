@@ -1,9 +1,12 @@
 #define _WINSOCK_DEPRECATED_NO_WARNINGS
 
 #include "NetUtil.h"
+#include "ChatPacket.h"
+#include "MovePacket.h"
 
 #include <winsock2.h>
 #include <iostream>
+#include <map>
 
 
 #pragma comment(lib, "ws2_32")
@@ -12,6 +15,47 @@
 using namespace std;
 
 char Buffer[1024] = { 0, };
+
+// 소켓별 플레이어 위치 저장
+struct PlayerState
+{
+	string UserID;
+	int X = 0;
+	int Y = 0;
+};
+map<SOCKET, PlayerState> Players;
+
+// 방향 -> 좌표 변환
+static void ApplyDirection(char Dir, int& X, int& Y)
+{
+	switch (Dir)
+	{
+	case 'w': Y -= 1; break;
+	case 's': Y += 1; break;
+	case 'a': X -= 1; break;
+	case 'd': X += 1; break;
+	}
+}
+
+// 전체 브로드캐스트
+static void Broadcast(fd_set& ReadSockets, SOCKET ListenSocket,
+	PacketType Type, const string& JsonData)
+{
+	for (int j = 0; j < (int)ReadSockets.fd_count; ++j)
+	{
+		SOCKET Target = ReadSockets.fd_array[j];
+		if (Target == ListenSocket)
+			continue;
+
+		if (SendPacket(Target, Type, JsonData) <= 0)
+		{
+			cout << "[해제] 브로드캐스트 실패" << endl;
+			Players.erase(Target);
+			DisconnectSocket(Target, &ReadSockets);
+		}
+	}
+}
+
 
 //blocking, synchrous, multiplexing(polling)
 int main()
@@ -80,79 +124,115 @@ int main()
 					cout << "connect client " << inet_ntoa(ClientSockAddr.sin_addr) << endl;
 
 					FD_SET(ClientSocket, &ReadSockets);
+					Players[ClientSocket] = PlayerState{};
 				}
 				else
 				{
 					//Data Receive
 
 					//header
-					unsigned short PacketSize = 0;
-					int RecvBytes = recv(ReadSockets.fd_array[i], (char*)&PacketSize, sizeof(PacketSize), MSG_WAITALL);
+					PacketHeader Header;
+					int RecvBytes = recv(ReadSockets.fd_array[i], (char*)&Header, HEADER_SIZE, MSG_WAITALL);
 					if (RecvBytes <= 0)
 					{
 						cout << "header recv fail " << endl;
+						Players.erase(ReadSockets.fd_array[i]);
 						DisconnectSocket(ReadSockets.fd_array[i], &ReadSockets);
 						continue;
 					}
 
-					PacketSize = ntohs(PacketSize);
+					PacketType Type = static_cast<PacketType>(ntohs(Header.Type));
+					unsigned short DataSize = ntohs(Header.Size);
 
 					memset(Buffer, 0, sizeof(Buffer));
 					//data JSON
-					RecvBytes = recv(ReadSockets.fd_array[i], Buffer, PacketSize, MSG_WAITALL);
+					RecvBytes = recv(ReadSockets.fd_array[i], Buffer, DataSize, MSG_WAITALL);
 					if (RecvBytes <= 0)
 					{
 						cout << "data recv fail " << endl;
+						Players.erase(ReadSockets.fd_array[i]);
 						DisconnectSocket(ReadSockets.fd_array[i], &ReadSockets);
 						continue;
 					}
-					else
+
+					string JsonStr(Buffer, RecvBytes);
+
+					// 3) PacketType 별 처리
+					switch (Type)
 					{
-						SOCKADDR_IN ClientSockAddr;
-						memset(&ClientSockAddr, 0, sizeof(ClientSockAddr));
-						int ClientSockAddrLength = sizeof(ClientSockAddr);
+						// ── Chat ───────────────────────────────
+					case PacketType::Chat:
+					{
+						ChatPacket Chat;
+						Chat.Parse(JsonStr);
 
-						getpeername(ReadSockets.fd_array[i], (SOCKADDR*)&ClientSockAddr, &ClientSockAddrLength);
+						if (Players[ReadSockets.fd_array[i]].UserID.empty())
+							Players[ReadSockets.fd_array[i]].UserID = Chat.UserID;
 
-						cout << "client(" << inet_ntoa(ClientSockAddr.sin_addr);
-						cout << ")" << Buffer << " send" << endl;
-						//모든 접속한 유저한테 전달
+						cout << "[채팅] " << Chat.UserID
+							<< " : " << Chat.Message
+							<< " (Gold: " << Chat.Gold << ")" << endl;
 
 						for (int j = 0; j < (int)ReadSockets.fd_count; ++j)
 						{
-							//자기꺼는 그냥 찍고 안 받으면 안되요?
-							//클라이언트에서는 처리 안함.
-							if (ReadSockets.fd_array[j] != ListenSocket)
+							SOCKET Target = ReadSockets.fd_array[j];
+							if (Target == ListenSocket)
+								continue;
+
+							if (SendPacket(Target, Type, Chat.ToString()) <= 0)
 							{
-								PacketSize = (unsigned short)strlen(Buffer);
-								PacketSize = htons(PacketSize);
-
-								//header
-								int SentBytes = SendAll(ReadSockets.fd_array[j], (char*)&PacketSize, 2);
-								if (SentBytes <= 0)
-								{
-									cout << "header send fail." << endl;
-									DisconnectSocket(ReadSockets.fd_array[j], &ReadSockets);
-								}
-
-								//Data
-								SentBytes = SendAll(ReadSockets.fd_array[j], Buffer, ntohs(PacketSize));
-								if (SentBytes <= 0)
-								{
-									cout << "Data send fail." << endl;
-									DisconnectSocket(ReadSockets.fd_array[j], &ReadSockets);
-								}
+								cout << "[해제] 브로드캐스트 실패" << endl;
+								Players.erase(Target);
+								DisconnectSocket(Target, &ReadSockets);
 							}
 						}
+						break;
+					}
+
+					// ── Move ───────────────────────────────
+					case PacketType::Move:
+					{
+						MovePacket Move;
+						Move.Parse(JsonStr);
+
+						PlayerState& State = Players[ReadSockets.fd_array[i]];
+						State.UserID = Move.UserID;
+						ApplyDirection(Move.Dir, State.X, State.Y);
+
+						cout << "[이동] " << State.UserID
+							<< " Dir=" << Move.Dir
+							<< " -> (" << State.X << ", " << State.Y << ")" << endl;
+
+						PositionPacket Pos;
+						Pos.UserID = State.UserID;
+						Pos.X = State.X;
+						Pos.Y = State.Y;
+
+						for (int j = 0; j < (int)ReadSockets.fd_count; ++j)
+						{
+							SOCKET Target = ReadSockets.fd_array[j];
+							if (Target == ListenSocket)
+								continue;
+
+							if (SendPacket(Target, PacketType::Position, Pos.ToString()) <= 0)
+							{
+								cout << "[해제] 브로드캐스트 실패" << endl;
+								Players.erase(Target);
+								DisconnectSocket(Target, &ReadSockets);
+							}
+						}
+
+						break;
+					}
+
+					default:
+						cout << "[서버] 알 수 없는 패킷 타입" << endl;
+						break;
 					}
 				}
 			}
 		}
 	}
-
-
-
-
 
 
 	closesocket(ListenSocket);

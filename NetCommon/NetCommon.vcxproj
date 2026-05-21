@@ -137,12 +137,14 @@
   <ItemGroup>
     <ClInclude Include="ChatPacket.h" />
     <ClInclude Include="framework.h" />
+    <ClInclude Include="MovePacket.h" />
     <ClInclude Include="NetUtil.h" />
     <ClInclude Include="Packet.h" />
     <ClInclude Include="pch.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="ChatPacket.cpp" />
+    <ClCompile Include="MovePacket.cpp" />
     <ClCompile Include="NetCommon.cpp" />
     <ClCompile Include="NetUtil.cpp" />
     <ClCompile Include="Packet.cpp" />

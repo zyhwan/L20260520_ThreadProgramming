@@ -32,3 +32,19 @@ void DisconnectSocket(SOCKET DisconnectedSocket, fd_set* Sockets)
 	FD_CLR(DisconnectedSocket, &Sockets);
 	closesocket(ClosedSocket);
 }
+
+int SendPacket(SOCKET ReceiverSocket, PacketType Type, const std::string& JsonData)
+{
+	PacketHeader Header;
+	Header.Type = htons(static_cast<unsigned short>(Type));
+	Header.Size = htons(static_cast<unsigned short>(JsonData.length()));
+
+	// 헤더 전송
+	int Sent = SendAll(ReceiverSocket, reinterpret_cast<const char*>(&Header), HEADER_SIZE);
+	if (Sent <= 0)
+		return Sent;
+
+	// 본문(JSON) 전송
+	Sent = SendAll(ReceiverSocket, JsonData.c_str(), static_cast<int>(JsonData.length()));
+	return Sent;
+}
