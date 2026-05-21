@@ -37,26 +37,6 @@ static void ApplyDirection(char Dir, int& X, int& Y)
 	}
 }
 
-// 전체 브로드캐스트
-static void Broadcast(fd_set& ReadSockets, SOCKET ListenSocket,
-	PacketType Type, const string& JsonData)
-{
-	for (int j = 0; j < (int)ReadSockets.fd_count; ++j)
-	{
-		SOCKET Target = ReadSockets.fd_array[j];
-		if (Target == ListenSocket)
-			continue;
-
-		if (SendPacket(Target, Type, JsonData) <= 0)
-		{
-			cout << "[해제] 브로드캐스트 실패" << endl;
-			Players.erase(Target);
-			DisconnectSocket(Target, &ReadSockets);
-		}
-	}
-}
-
-
 //blocking, synchrous, multiplexing(polling)
 int main()
 {
@@ -157,39 +137,8 @@ int main()
 
 					string JsonStr(Buffer, RecvBytes);
 
-					// 3) PacketType 별 처리
 					switch (Type)
 					{
-						// ── Chat ───────────────────────────────
-					case PacketType::Chat:
-					{
-						ChatPacket Chat;
-						Chat.Parse(JsonStr);
-
-						if (Players[ReadSockets.fd_array[i]].UserID.empty())
-							Players[ReadSockets.fd_array[i]].UserID = Chat.UserID;
-
-						cout << "[채팅] " << Chat.UserID
-							<< " : " << Chat.Message
-							<< " (Gold: " << Chat.Gold << ")" << endl;
-
-						for (int j = 0; j < (int)ReadSockets.fd_count; ++j)
-						{
-							SOCKET Target = ReadSockets.fd_array[j];
-							if (Target == ListenSocket)
-								continue;
-
-							if (SendPacket(Target, Type, Chat.ToString()) <= 0)
-							{
-								cout << "[해제] 브로드캐스트 실패" << endl;
-								Players.erase(Target);
-								DisconnectSocket(Target, &ReadSockets);
-							}
-						}
-						break;
-					}
-
-					// ── Move ───────────────────────────────
 					case PacketType::Move:
 					{
 						MovePacket Move;
@@ -201,13 +150,15 @@ int main()
 
 						cout << "[이동] " << State.UserID
 							<< " Dir=" << Move.Dir
-							<< " -> (" << State.X << ", " << State.Y << ")" << endl;
+							<< " ( " << State.X << ", " << State.Y << " )" << endl;
 
 						PositionPacket Pos;
 						Pos.UserID = State.UserID;
 						Pos.X = State.X;
 						Pos.Y = State.Y;
 
+
+						//전체 클라이언트에 전달.
 						for (int j = 0; j < (int)ReadSockets.fd_count; ++j)
 						{
 							SOCKET Target = ReadSockets.fd_array[j];

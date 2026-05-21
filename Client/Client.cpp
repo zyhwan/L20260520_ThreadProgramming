@@ -9,6 +9,7 @@
 #include <Windows.h>
 #include <iostream>
 #include <process.h>
+#include <conio.h>
 
 #pragma comment(lib, "ws2_32")
 #pragma comment(lib, "NetCommon")
@@ -55,23 +56,13 @@ unsigned WINAPI RecvThread(void* Argument)
 		ChatPacket Data;
 		switch (Type)
 		{
-		case PacketType::Chat:
-		{
-			ChatPacket Chat;
-			Chat.Parse(JsonStr);
-			cout << "[채팅] " << Chat.UserID
-				<< " : " << Chat.Message
-				<< " (Gold: " << Chat.Gold << ")" << endl;
-			break;
-		}
-
 		case PacketType::Position:
 		{
 			// 서버가 이동 결과를 Position 패킷으로 브로드캐스트
 			PositionPacket Pos;
 			Pos.Parse(JsonStr);
 			cout << "[위치] " << Pos.UserID
-				<< " -> (" << Pos.X << ", " << Pos.Y << ")" << endl;
+				<< "( " << Pos.X << ", " << Pos.Y << " )" << endl;
 			break;
 		}
 
@@ -92,36 +83,24 @@ unsigned WINAPI SendThread(void* Argument)
 
 	while (IsSendThreadRunning)
 	{
-		cin.getline(SendBuffer, sizeof(SendBuffer));
-		string Input(SendBuffer);
+		//cin.getline(SendBuffer, sizeof(SendBuffer));
 
-		if (Input.empty())
-			continue;
+		char c = _getch();
 
-		if (Input.length() == 1 &&
-			(Input[0] == 'w' || Input[0] == 'a' ||
-				Input[0] == 's' || Input[0] == 'd')) //이 경우면 이동
+		//string Input(SendBuffer);
+
+		//if (Input.empty())
+		//	continue;
+
+		if ((c == 'w' || c == 'a' || c == 's' || c == 'd')) 
 		{
 			MovePacket Move;
 			Move.UserID = "Jihwan";
-			Move.Dir = Input[0];
+			Move.Dir = c;
 
 			if (SendPacket(ServerSocket, PacketType::Move, Move.ToString()) <= 0)
 			{
 				cout << "[클라] MovePacket 전송 실패" << endl;
-				break;
-			}
-		}
-		else //채팅 전달
-		{
-			ChatPacket Chat;
-			Chat.UserID = "Jihwan";
-			Chat.Message = Input;
-			Chat.Gold = 1000;
-
-			if (SendPacket(ServerSocket, PacketType::Chat, Chat.ToString()) <= 0)
-			{
-				cout << "[클라] ChatPacket 전송 실패" << endl;
 				break;
 			}
 		}
