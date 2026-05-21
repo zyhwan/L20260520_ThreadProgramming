@@ -83,14 +83,7 @@ unsigned WINAPI SendThread(void* Argument)
 
 	while (IsSendThreadRunning)
 	{
-		//cin.getline(SendBuffer, sizeof(SendBuffer));
-
 		char c = _getch();
-
-		//string Input(SendBuffer);
-
-		//if (Input.empty())
-		//	continue;
 
 		if ((c == 'w' || c == 'a' || c == 's' || c == 'd')) 
 		{
@@ -122,7 +115,7 @@ int main()
 	SOCKADDR_IN ServerSockAddr;
 	memset(&ServerSockAddr, 0, sizeof(ServerSockAddr));
 	ServerSockAddr.sin_family = AF_INET;
-	ServerSockAddr.sin_addr.s_addr = inet_addr("127.0.0.1");
+	ServerSockAddr.sin_addr.s_addr = inet_addr("192.168.0.59");
 	ServerSockAddr.sin_port = htons(35000);
 
 	connect(ServerSocket, (SOCKADDR*)&ServerSockAddr, sizeof(ServerSockAddr));

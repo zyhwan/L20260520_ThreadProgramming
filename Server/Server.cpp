@@ -105,6 +105,29 @@ int main()
 
 					FD_SET(ClientSocket, &ReadSockets);
 					Players[ClientSocket] = PlayerState{};
+
+
+					//접속했다면 모든 클라이언트한테 위치 전달.
+					PositionPacket Pos;
+
+					for (int j = 0; j < (int)ReadSockets.fd_count; ++j)
+					{
+						SOCKET Target = ReadSockets.fd_array[j];
+						if (Target == ListenSocket)
+							continue;
+
+						Pos.UserID = Players[j].UserID;
+						Pos.X = Players[j].X;
+						Pos.Y = Players[j].Y;
+
+						if (SendPacket(Target, PacketType::Position, Pos.ToString()) <= 0)
+						{
+							cout << "[해제] 브로드캐스트 실패" << endl;
+							Players.erase(Target);
+							DisconnectSocket(Target, &ReadSockets);
+						}
+					}
+
 				}
 				else
 				{
@@ -149,7 +172,7 @@ int main()
 						ApplyDirection(Move.Dir, State.X, State.Y);
 
 						cout << "[이동] " << State.UserID
-							<< " Dir=" << Move.Dir
+							<< " Dir : " << Move.Dir
 							<< " ( " << State.X << ", " << State.Y << " )" << endl;
 
 						PositionPacket Pos;
