@@ -22,6 +22,7 @@ struct PlayerState
 	string UserID;
 	int X = 0;
 	int Y = 0;
+	char Shape = 'P';
 };
 map<SOCKET, PlayerState> Players;
 
@@ -86,7 +87,7 @@ int main()
 			continue;
 		}
 
-		//몬가 자료 있다.
+		//뭔가 자료 있다.
 		for (int i = 0; i < (int)ReadSockets.fd_count; ++i)
 		{
 			if (FD_ISSET(ReadSockets.fd_array[i], &CopyReadSockets))
@@ -114,15 +115,18 @@ int main()
 					{
 						SOCKET Target = ReadSockets.fd_array[j];
 						if (Target == ListenSocket)
+						{
 							continue;
+						}
 
-						Pos.UserID = Players[j].UserID;
-						Pos.X = Players[j].X;
-						Pos.Y = Players[j].Y;
+						Pos.UserID = Players[Target].UserID;
+						Pos.X = Players[Target].X;
+						Pos.Y = Players[Target].Y;
+						Pos.Shape = Players[Target].Shape;
 
 						if (SendPacket(Target, PacketType::Position, Pos.ToString()) <= 0)
 						{
-							cout << "[해제] 브로드캐스트 실패" << endl;
+							cout << "[해제] " << endl;
 							Players.erase(Target);
 							DisconnectSocket(Target, &ReadSockets);
 						}
@@ -173,13 +177,13 @@ int main()
 
 						cout << "[이동] " << State.UserID
 							<< " Dir : " << Move.Dir
-							<< " ( " << State.X << ", " << State.Y << " )" << endl;
+							<< " ( " << State.X << ", " << State.Y << " )" << " 플레이어 아이콘: " << State.Shape << endl;
 
 						PositionPacket Pos;
 						Pos.UserID = State.UserID;
 						Pos.X = State.X;
 						Pos.Y = State.Y;
-
+						Pos.Shape = State.Shape;
 
 						//전체 클라이언트에 전달.
 						for (int j = 0; j < (int)ReadSockets.fd_count; ++j)

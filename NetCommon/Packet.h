@@ -5,6 +5,7 @@ enum class PacketType
 {
     Move = 0,   // 클라이언트 -> 서버: 이동 방향
     Position,   // 서버 -> 클라이언트: 플레이어 위치
+	Maps,
     Max
 };
 

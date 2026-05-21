@@ -62,7 +62,7 @@ unsigned WINAPI RecvThread(void* Argument)
 			PositionPacket Pos;
 			Pos.Parse(JsonStr);
 			cout << "[위치] " << Pos.UserID
-				<< "( " << Pos.X << ", " << Pos.Y << " )" << endl;
+				<< "( " << Pos.X << ", " << Pos.Y << " )" << "플레이어 아이콘: " << Pos.Shape << endl;
 			break;
 		}
 

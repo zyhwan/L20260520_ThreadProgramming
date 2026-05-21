@@ -42,6 +42,7 @@ void PositionPacket::Parse(std::string InString)
     UserID = JSONDocument["UserID"].GetString();
     X = JSONDocument["X"].GetInt();
     Y = JSONDocument["Y"].GetInt();
+    Shape = static_cast<char>(JSONDocument["Shape"].GetInt());
 }
 
 std::string PositionPacket::ToString()
@@ -53,6 +54,7 @@ std::string PositionPacket::ToString()
     JSONDocument.AddMember("UserID", UID, Alloc);
     JSONDocument.AddMember("X", X, Alloc);
     JSONDocument.AddMember("Y", Y, Alloc);
+    JSONDocument.AddMember("Shape", static_cast<int>(Shape), Alloc);
 
     rapidjson::StringBuffer Buf;
     rapidjson::Writer<rapidjson::StringBuffer> Writer(Buf);
